@@ -114,10 +114,13 @@
 
     function displayData(data) {
       let items = [];
+      let type = '';
 
       if (Array.isArray(data)) {
         items = data;
+        type = 'Array';
       } else if (typeof data === 'object' && data !== null) {
+        type = 'Object';
         for (const key in data) {
           if (Array.isArray(data[key])) {
             items = data[key];
