@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Analizador JSON — La Noche del Príncipe</title>
+  <style>
+    /* Reset */
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%}
+    body{
+      font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+      background: radial-gradient(1200px 600px at 10% 10%, rgba(40,38,58,0.6), transparent),
+                  radial-gradient(1000px 500px at 90% 90%, rgba(60,20,20,0.25), transparent),
+                  #050406;
+      color:#e6e6ea;
+      -webkit-font-smoothing:antialiased;
+      padding:40px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    /* Container */
+    .frame{
+      width:100%;
+      max-width:1100px;
+      border-radius:18px;
+      padding:28px;
+      background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      box-shadow: 0 8px 30px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.02);
+      backdrop-filter: blur(10px) saturate(120%);
+      border: 1px solid rgba(255,255,255,0.03);
+      display:grid;
+      grid-template-columns: 420px 1fr;
+      gap:20px;
+    }
+
+    header.title{
+      grid-column:1/-1;
+      display:flex;
+      align-items:center;
+      gap:16px;
+      margin-bottom:6px;
+    }
+    .logo{
+      width:56px;height:56px;border-radius:12px;
+      display:grid;place-items:center;
+      background: linear-gradient(135deg, rgba(255,215,0,0.07), rgba(255,215,0,0.02));
+      border:1px solid rgba(255,215,0,0.06);
+      box-shadow: 0 4px 18px rgba(0,0,0,0.6), inset 0 -6px 20px rgba(0,0,0,0.4);
+    }
+    .logo svg{filter:drop-shadow(0 4px 8px rgba(0,0,0,0.6));}
+
+    h1{font-size:18px;letter-spacing:0.4px;color:#fff}
+    p.lead{color:rgba(230,230,234,0.7);font-size:13px;margin-top:6px}
+
+    /* Left column - drop area + info */
+    .left{
+      display:flex;flex-direction:column;gap:14px;
+    }
+    .drop{
+      border-radius:14px;padding:18px;min-height:220px;display:flex;flex-direction:column;gap:12px;
+      align-items:center;justify-content:center;text-align:center;cursor:pointer;
+      border:1px dashed rgba(255,255,255,0.04);
+      background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));
+      transition: all 220ms ease;
+    }
+    .drop.dragover{transform:translateY(-4px);box-shadow:0 18px 40px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,215,0,0.02);border-color:rgba(255,215,0,0.12)}
+    .drop small{display:block;color:rgba(230,230,234,0.6)}
+
+    .controls{display:flex;gap:10px;align-items:center}
+    .btn{padding:10px 14px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.03);cursor:pointer}
+    .btn.primary{background:linear-gradient(90deg, rgba(255,215,0,0.07), rgba(255,215,0,0.03));border-color:rgba(255,215,0,0.12);}
+    .meta{font-size:13px;color:rgba(230,230,234,0.6)}
+
+    /* Right column - results */
+    .results{
+      display:flex;flex-direction:column;gap:12px;min-height:320px;
+    }
+    .card{
+      border-radius:12px;padding:14px;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));border:1px solid rgba(255,255,255,0.02);
+    }
+    .stats{display:flex;gap:12px;align-items:center}
+    .stat{flex:1;padding:12px;border-radius:10px;background:rgba(0,0,0,0.3);text-align:center}
+    .stat h3{font-size:20px;margin-bottom:6px}
+    .table{max-height:400px;overflow:auto;border-radius:10px}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    thead th{position:sticky;top:0;background:linear-gradient(180deg, rgba(5,4,6,0.6), rgba(5,4,6,0.4));backdrop-filter: blur(6px);z-index:2;padding:10px;text-align:left}
+    tbody td{padding:10px;border-top:1px solid rgba(255,255,255,0.02)}
+    .count{font-weight:700;padding:6px 10px;border-radius:8px;background:rgba(255,255,255,0.02);display:inline-block}
+    .count.dup{background:linear-gradient(90deg, rgba(255,215,0,0.12), rgba(255,99,71,0.06));color:#fff}
+    .path{font-size:12px;color:rgba(230,230,234,0.6)}
+
+    .highlight{outline:2px solid rgba(255,215,0,0.14);box-shadow:0 6px 24px rgba(255,215,0,0.04)}
+
+    .footer-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end}
+
+    /* Responsive */
+    @media (max-width:980px){
+      .frame{grid-template-columns:1fr; padding:18px}
+      .left{order:2}
+      .results{order:1}
+    }
+
+    /* small helpers */
+    .muted{color:rgba(230,230,234,0.55);font-size:13px}
+    .badge{display:inline-block;padding:6px 8px;border-radius:999px;border:1px solid rgba(255,255,255,0.03);background:rgba(255,255,255,0.01);font-size:12px}
+    .search{width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit}
+  </style>
+</head>
+<body>
+  <div class="frame" role="main">
+    <header class="title">
+      <div class="logo" aria-hidden>
+        <!-- Minimal crown-like emblem -->
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3 7l3 10h12l3-10-5 2-3-4-3 4-5-2z" fill="url(#g)"/>
+          <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFD54A" stop-opacity="0.95"/><stop offset="1" stop-color="#C68600" stop-opacity="0.85"/></linearGradient></defs>
+        </svg>
+      </div>
+      <div>
+        <h1>Analizador JSON — La Noche del Príncipe</h1>
+        <p class="lead">Arrastra o sube un archivo <code>.json</code>. Identifico todos los items, te muestro los repetidos, caminos y conteos — estilo oscuro, moderno y con clase.</p>
+      </div>
+    </header>
+
+    <section class="left">
+      <div id="drop" class="drop" tabindex="0">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path d="M12 3v9" stroke="#FFD54A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M8 7l4-4 4 4" stroke="#FFD54A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M21 15v2a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-2" stroke="rgba(255,255,255,0.7)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <strong style="font-size:15px">Suelta tu archivo JSON aquí</strong>
+        <small>o haz click para seleccionar. Soporta JSON grande.</small>
+        <input id="file" type="file" accept="application/json,.json" style="display:none">
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div class="muted">Archivo:</div>
+            <div id="filename" style="font-weight:700">Ninguno</div>
+          </div>
+          <div class="meta">
+            <div class="muted">Items únicos</div>
+            <div id="uniqueCount" style="font-weight:700">—</div>
+          </div>
+        </div>
+        <hr style="margin:10px 0;border:none;border-top:1px solid rgba(255,255,255,0.02)">
+        <div class="muted">Consejos rápidos:</div>
+        <ul style="margin-top:8px;color:rgba(230,230,234,0.65);font-size:13px;line-height:1.5">
+          <li>El analizador extrae "items" de todas las hojas (leaves) y también serializa arrays/objetos completos para detectar duplicados complejos.</li>
+          <li>Haz click en un item para ver sus rutas dentro del JSON.</li>
+          <li>Puedes exportar los duplicados como CSV para revisar con calma.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="search" class="search" placeholder="Buscar item o ruta... (filtra tabla)" />
+          <div class="footer-actions">
+            <button id="exportCsv" class="btn">Exportar CSV</button>
+            <button id="clear" class="btn">Limpiar</button>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <section class="results">
+      <div class="card stats">
+        <div class="stat">
+          <div class="muted">Total de hojas (leaf values)</div>
+          <h3 id="totalLeaves">—</h3>
+          <div class="muted">Incluye objetos/arrays serializados</div>
+        </div>
+        <div class="stat">
+          <div class="muted">Duplicados detectados</div>
+          <h3 id="dupsDetected">—</h3>
+          <div class="muted">Items con conteo &gt; 1</div>
+        </div>
+      </div>
+
+      <div class="card table">
+        <table id="table">
+          <thead>
+            <tr>
+              <th style="width:6%">#</th>
+              <th style="width:20%">Item (valor / representación)</th>
+              <th style="width:12%">Conteo</th>
+              <th>Ejemplo de rutas</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="4" class="path">Carga un archivo .json para ver resultados.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+    </section>
+
+  </div>
+
+  <template id="rowTpl">
+    <tr>
+      <td class="idx"></td>
+      <td class="val"></td>
+      <td class="cnt"></td>
+      <td class="paths"></td>
+    </tr>
+  </template>
+
+  <script>
+    // Helper: recursively walk JSON and collect leaf entries and serialized objects/arrays
+    function walkJSON(node, path = '') {
+      const entries = [];
+      if (node === null || typeof node !== 'object') {
+        // primitive leaf
+        entries.push({ key: path || '/', value: node, repr: String(node), type: typeof node });
+      } else if (Array.isArray(node)) {
+        // consider array itself as an item, and its children
+        entries.push({ key: path || '/', value: node, repr: JSON.stringify(node), type: 'array' });
+        node.forEach((v, i) => {
+          entries.push(...walkJSON(v, path + '[' + i + ']'));
+        });
+      } else {
+        // object
+        entries.push({ key: path || '/', value: node, repr: JSON.stringify(node), type: 'object' });
+        Object.keys(node).forEach(k => {
+          entries.push(...walkJSON(node[k], path ? path + '.' + k : k));
+        });
+      }
+      return entries;
+    }
+
+    const drop = document.getElementById('drop');
+    const fileInput = document.getElementById('file');
+    const filename = document.getElementById('filename');
+    const uniqueCount = document.getElementById('uniqueCount');
+    const totalLeaves = document.getElementById('totalLeaves');
+    const dupsDetected = document.getElementById('dupsDetected');
+    const table = document.querySelector('#table tbody');
+    const search = document.getElementById('search');
+    const exportCsv = document.getElementById('exportCsv');
+    const clearBtn = document.getElementById('clear');
+
+    let currentMap = new Map(); // repr -> {count, paths, sampleType}
+
+    function parseFile(file) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const json = JSON.parse(e.target.result);
+          processJSON(json, file.name);
+        } catch (err) {
+          alert('Error al parsear JSON: ' + err.message);
+        }
+      };
+      reader.onerror = () => alert('Error leyendo archivo');
+      reader.readAsText(file);
+    }
+
+    function processJSON(json, name) {
+      filename.textContent = name || 'archivo.json';
+      const entries = walkJSON(json);
+      // build map
+      currentMap.clear();
+      for (const ent of entries) {
+        const key = ent.repr + '___' + ent.type; // include type to avoid collisions (e.g. 'null' vs '"null"')
+        const prev = currentMap.get(key);
+        if (!prev) currentMap.set(key, { count: 1, repr: ent.repr, type: ent.type, paths: [ent.key] });
+        else { prev.count++; prev.paths.push(ent.key); }
+      }
+      renderTable();
+    }
+
+    function renderTable(filter=''){
+      // compute stats
+      const rows = Array.from(currentMap.values()).map((v)=>v).sort((a,b)=>b.count - a.count || a.repr.localeCompare(b.repr));
+      const total = rows.reduce((s,r)=>s+r.count,0);
+      const dups = rows.filter(r=>r.count>1).length;
+      totalLeaves.textContent = total;
+      uniqueCount.textContent = rows.length;
+      dupsDetected.textContent = dups;
+
+      // render rows
+      table.innerHTML = '';
+      if (rows.length===0){
+        table.innerHTML = '<tr><td colspan="4" class="path">Ningún item. Carga un archivo .json.</td></tr>';
+        return;
+      }
+      let idx=0;
+      for (const r of rows) {
+        if (filter) {
+          const f = filter.toLowerCase();
+          if (!(String(r.repr).toLowerCase().includes(f) || r.paths.join(' ').toLowerCase().includes(f))) continue;
+        }
+        idx++;
+        const tr = document.createElement('tr');
+        const tdIdx = document.createElement('td'); tdIdx.textContent = idx;
+        const tdVal = document.createElement('td'); tdVal.innerHTML = '<div style="font-weight:600;max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(r.repr) + '</div>';
+        const tdCnt = document.createElement('td'); tdCnt.innerHTML = '<span class="count ' + (r.count>1? 'dup':'') + '">' + r.count + '</span>';
+        const tdPaths = document.createElement('td');
+        const sample = r.paths.slice(0,4).map(p=>'<div class="path">' + escapeHtml(p) + '</div>').join('');
+        tdPaths.innerHTML = sample + (r.paths.length>4? '<div class="muted">+ ' + (r.paths.length-4) + ' más</div>':'');
+
+        tr.appendChild(tdIdx);tr.appendChild(tdVal);tr.appendChild(tdCnt);tr.appendChild(tdPaths);
+        if (r.count>1) tr.classList.add('highlight');
+        // click to show modal with all paths
+        tr.addEventListener('click', ()=>{
+          showPathsModal(r);
+        });
+        table.appendChild(tr);
+      }
+      if (idx===0) table.innerHTML = '<tr><td colspan="4" class="path">Sin resultados para el filtro.</td></tr>';
+    }
+
+    function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    function showPathsModal(r){
+      const win = window.open('', '_blank', 'width=720,height=520,toolbar=0,menubar=0,location=0');
+      const doc = win.document;
+      doc.write('<!doctype html><html><head><meta charset="utf-8"><title>Rutas — '+escapeHtml(r.repr).slice(0,40)+'...</title><style>body{font-family:Inter,Arial;padding:18px;background:#050406;color:#e6e6ea}h2{margin-bottom:8px}pre{background:#0b0b0d;padding:12px;border-radius:8px;overflow:auto}</style></head><body>');
+      doc.write('<h2>Valor:</h2><pre>' + escapeHtml(r.repr) + '</pre>');
+      doc.write('<h2>Tipo:</h2><pre>' + escapeHtml(r.type) + '</pre>');
+      doc.write('<h2>Rutas ('+r.paths.length+'):</h2><pre>' + escapeHtml(r.paths.join('\n')) + '</pre>');
+      doc.write('</body></html>');
+      doc.close();
+    }
+
+    // export CSV of duplicates (only those with count>1) — path list joined by |\n
+    function exportDuplicatesCSV(){
+      const rows = [['repr','type','count','paths']];
+      for (const v of currentMap.values()){
+        if (v.count>1){
+          rows.push([ '"' + v.repr.replace(/"/g,'""') + '"', v.type, v.count, '"' + v.paths.join(' | ') + '"' ]);
+        }
+      }
+      if (rows.length<=1){ alert('No hay duplicados para exportar'); return; }
+      const csv = rows.map(r=>r.join(',')).join('\n');
+      const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'duplicates.csv'; a.click(); URL.revokeObjectURL(url);
+    }
+
+    // Drag & drop handlers
+    ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev, e=>{ e.preventDefault(); e.stopPropagation(); drop.classList.add('dragover'); }));
+    ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev, e=>{ e.preventDefault(); e.stopPropagation(); drop.classList.remove('dragover'); }));
+    drop.addEventListener('drop', e=>{
+      const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) parseFile(f);
+    });
+    drop.addEventListener('click', ()=>fileInput.click());
+    fileInput.addEventListener('change', ()=>{ const f = fileInput.files[0]; if (f) parseFile(f); });
+
+    // search filter
+    search.addEventListener('input', ()=> renderTable(search.value));
+    exportCsv.addEventListener('click', exportDuplicatesCSV);
+    clearBtn.addEventListener('click', ()=>{
+      filename.textContent = 'Ninguno'; uniqueCount.textContent = '—'; totalLeaves.textContent = '—'; dupsDetected.textContent='—'; table.innerHTML = '<tr><td colspan="4" class="path">Carga un archivo .json para ver resultados.</td></tr>'; currentMap.clear();
+    });
+
+    // Keyboard support: Ctrl+O to open file
+    window.addEventListener('keydown', (e)=>{
+      if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='o'){
+        e.preventDefault(); fileInput.click();
+      }
+    });
+
+    // Quick sample if user presses 'S' (for testing)
+    window.addEventListener('keydown', (e)=>{
+      if (e.key.toLowerCase()==='s' && (e.ctrlKey||e.metaKey)){
+        e.preventDefault();
+        const sample = {"people":[{"name":"Alucard","age":300},{"name":"Alucard","age":300}],"coven":{"count":2,"members":["Alucard","Lestat","Alucard"]}};
+        processJSON(sample,'sample.json');
+      }
+    });
+
+  </script>
+</body>
+</html>
